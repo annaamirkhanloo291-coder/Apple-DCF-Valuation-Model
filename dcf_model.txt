@@ -1,0 +1,59 @@
+import numpy as np
+import pandas as pd
+
+# 1. Historical Data from Apple FY2026 Form 10-K (in $ millions)
+rev_2026 = 478834
+ebit_margin = 158063 / 478834      # ~33.01%
+tax_rate = 0.17                    # 17.0% effective tax rate
+fcf_to_nopat = 136056 / (158063 * (1 - tax_rate))
+
+cash = 36305 + 20417 + 80213       # $136,935M
+debt = 1997 + 9906 + 68208         # $90,111M
+shares = 14532.259                 # in millions
+
+# 2. Forecast Assumptions (FY2027 - FY2031)
+growth_rates = [0.10, 0.09, 0.08, 0.07, 0.06]
+wacc = 0.085
+terminal_growth = 0.03
+
+revenues, fcfs, pv_fcfs = [], [], []
+rev = rev_2026
+
+for t, g in enumerate(growth_rates, start=1):
+    rev = rev * (1 + g)
+    nopat = rev * ebit_margin * (1 - tax_rate)
+    fcf = nopat * fcf_to_nopat
+    pv = fcf / ((1 + wacc) ** t)
+    
+    revenues.append(rev)
+    fcfs.append(fcf)
+    pv_fcfs.append(pv)
+
+# 3. Terminal Value & Implied Share Price
+tv = fcfs[-1] * (1 + terminal_growth) / (wacc - terminal_growth)
+pv_tv = tv / ((1 + wacc) ** len(growth_rates))
+
+enterprise_value = sum(pv_fcfs) + pv_tv
+equity_value = enterprise_value + cash - debt
+implied_price = equity_value / shares
+
+print(f"Enterprise Value: ${enterprise_value:,.0f}M")
+print(f"Equity Value:     ${equity_value:,.0f}M")
+print(f"Implied Price:    ${implied_price:.2f}")
+
+# 4. Sensitivity Analysis (WACC vs Terminal Growth)
+wacc_range = [0.075, 0.080, 0.085, 0.090, 0.095]
+tg_range = [0.020, 0.025, 0.030, 0.035, 0.040]
+
+sens_matrix = pd.DataFrame(index=[f"WACC {w:.1%}" for w in wacc_range],
+                           columns=[f"g {g:.1%}" for g in tg_range])
+
+for w in wacc_range:
+    for g in tg_range:
+        pv_f = sum(f / ((1 + w) ** t) for t, f in enumerate(fcfs, start=1))
+        pv_t = (fcfs[-1] * (1 + g) / (w - g)) / ((1 + w) ** len(fcfs))
+        eq_val = pv_f + pv_t + cash - debt
+        sens_matrix.loc[f"WACC {w:.1%}", f"g {g:.1%}"] = round(eq_val / shares, 2)
+
+print("\nSensitivity Table (Implied Share Price $):")
+print(sens_matrix)
